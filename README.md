@@ -13,6 +13,30 @@ A production-style FastAPI service for ingesting and querying WhatsApp-like mess
 - **Structured Logging**: JSON-formatted logs with request tracking
 - **12-Factor App**: Configuration via environment variables
 
+## Scoring Criteria (10 points)
+
+### Core Correctness (4 pts) ✅
+- Health endpoints (`/health/live`, `/health/ready`)
+- `/webhook` success & idempotency
+- Basic `/messages` listing and ordering
+
+### Advanced Endpoints (4 pts) ✅
+- HMAC-SHA256 signature behavior (401 on invalid, 200 on valid, duplicates idempotent)
+- `/messages` pagination + filtering (limit, offset, from, since, q)
+- `/stats` correctness (total_messages, senders_count, messages_per_sender, timestamps)
+
+### Observability & Ops (1 pt) ✅
+- `/metrics` with required metrics: `http_requests_total`, `webhook_requests_total`
+- JSON logs with `request_id`, `result` fields, one line per request
+
+### Docs & Hygiene (1 pt) ✅
+- README with how to run (make up, URLs)
+- How to hit endpoints (examples provided)
+- Design decisions documented:
+  - HMAC verification implementation
+  - Pagination contract details
+  - /stats and metrics definitions
+
 ## Quick Start
 
 > **New to this project?** Start with [SETUP.md](SETUP.md) for detailed setup instructions from scratch.
@@ -174,17 +198,7 @@ request_latency_ms_bucket            # Histogram: 100ms, 500ms, 1000ms, 2000ms, 
 | `DATABASE_URL` | No | `sqlite:////data/app.db` |
 | `LOG_LEVEL` | No | `INFO` |
 
-## Database Schema
 
-```sql
-CREATE TABLE messages (
-  message_id TEXT PRIMARY KEY,
-  from_msisdn TEXT NOT NULL,
-  to_msisdn TEXT NOT NULL,
-  ts TEXT NOT NULL,
-  text TEXT,
-  created_at TEXT NOT NULL
-);
 ```
 
 ## Project Structure
@@ -206,7 +220,16 @@ Dockerfile, docker-compose.yml, requirements.txt
 python -m pytest tests/ -v
 ```
 
+
+## Setup Used
+
+VS code(coding) + Cursor(intial start) + chatgpt(planning) + perplexity(planning) + claude(markdown)
+
 ## License
 
 MIT
+
+## Author
+
+Shashwat Darshan-25177-DCE
 

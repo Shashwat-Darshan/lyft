@@ -94,14 +94,14 @@ def test_full_stack_e2e():
     extra_msgs = [
         {
             "message_id": "m2",
-            "from": "+111",
+            "from": "+14155550111",
             "to": "+14155550100",
             "ts": "2025-01-15T10:01:00Z",
             "text": "Hello again",
         },
         {
             "message_id": "m3",
-            "from": "+222",
+            "from": "+14155550222",
             "to": "+14155550100",
             "ts": "2025-01-15T10:02:00Z",
             "text": "Yo",
@@ -178,7 +178,7 @@ def test_full_stack_e2e():
     assert_or_log(stats["total_messages"] == total_expected, "stats total mismatch")
     assert_or_log(stats["senders_count"] == 3, "senders_count mismatch")
 
-    summed = sum(stats["messages_per_sender"].values())
+    summed = sum(s["count"] for s in stats["messages_per_sender"])
     assert_or_log(summed == total_expected, "messages_per_sender sum mismatch")
 
     assert_or_log(
