@@ -20,112 +20,57 @@ A production-style FastAPI service for ingesting and querying WhatsApp-like mess
 ### Prerequisites
 
 - Python 3.11+ (for local development)
-- Docker and Docker Compose (for containerized deployment, optional)
+- Docker and Docker Compose (for containerized deployment)
+- Make (for convenience commands, optional)
+
+### Using Makefile Commands
+
+The project includes a `Makefile` with convenient commands:
+
+```bash
+make up      # Start the service: docker compose up -d --build
+make down    # Stop the service: docker compose down -v
+make logs    # View logs: docker compose logs -f api
+make test    # Run tests: python -m pytest tests/ -v
+```
 
 ### Running the Service
 
-#### Option 1: Using Docker Compose (Recommended for Production)
+#### Option 1: Docker Compose (Recommended)
 
-1. Set environment variables:
 ```bash
 export WEBHOOK_SECRET="your-secret-key"
 export DATABASE_URL="sqlite:////data/app.db"
-```
-
-2. Start the service:
-```bash
 docker compose up -d --build
-```
-
-3. Check health:
-```bash
 curl http://localhost:8000/health/live
-curl http://localhost:8000/health/ready
 ```
 
-4. View logs:
-```bash
-docker compose logs -f api
-```
+#### Option 2: Local Development
 
-5. Stop the service:
-```bash
-docker compose down -v
-```
-
-#### Option 2: Running Locally (Development)
-
-1. Create a virtual environment (recommended):
 ```bash
 python -m venv venv
-
-# On Windows
-venv\Scripts\activate
-
-# On Linux/Mac
-source venv/bin/activate
-```
-
-2. Install dependencies:
-```bash
+source venv/bin/activate  # or: venv\Scripts\activate on Windows
 pip install -r requirements.txt
-```
-
-3. Set environment variables:
-```bash
-# On Windows (PowerShell)
-$env:WEBHOOK_SECRET="your-secret-key"
-$env:DATABASE_URL="sqlite:///./data/app.db"
-$env:LOG_LEVEL="INFO"
-
-# On Windows (CMD)
-set WEBHOOK_SECRET=your-secret-key
-set DATABASE_URL=sqlite:///./data/app.db
-set LOG_LEVEL=INFO
-
-# On Linux/Mac
 export WEBHOOK_SECRET="your-secret-key"
-export DATABASE_URL="sqlite:///./data/app.db"
-export LOG_LEVEL="INFO"
+uvicorn app.main:app --reload
 ```
 
-4. Create data directory (if using local SQLite):
+#### Option 3: Using Makefile
+
 ```bash
-mkdir -p data
-```
-
-5. Start the server:
-```bash
-# Using uvicorn directly
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Or using Python module
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Or run the main module directly
-python -m app.main
-```
-
-6. The server will be available at `http://localhost:8000`
-
-#### Option 3: Using Python Script
-
-Use the provided `run.py` script:
-```bash
-python run.py
+make up      # Start service
+make logs    # View logs
+make down    # Stop service
 ```
 
 ## API Endpoints
 
 ### POST /webhook
+Ingest messages with HMAC-SHA256 signature validation.
 
-Ingest inbound WhatsApp-like messages with HMAC signature validation.
+**Headers:** `Content-Type: application/json`, `X-Signature: <hex HMAC-SHA256>`
 
-**Request Headers:**
-- `Content-Type: application/json`
-- `X-Signature: <hex HMAC-SHA256 of request body>`
-
-**Request Body:**
+**Body:**
 ```json
 {
   "message_id": "m1",
@@ -136,251 +81,126 @@ Ingest inbound WhatsApp-like messages with HMAC signature validation.
 }
 ```
 
-**Response:**
-- `200 OK`: Message processed (created or duplicate)
-- `401 Unauthorized`: Invalid signature
-- `422 Unprocessable Entity`: Validation error
-
-**Example:**
-```bash
-# Compute signature (using Python)
-python3 -c "import hmac, hashlib; print(hmac.new(b'testsecret', b'{\"message_id\":\"m1\",\"from\":\"+919876543210\",\"to\":\"+14155550100\",\"ts\":\"2025-01-15T10:00:00Z\",\"text\":\"Hello\"}', hashlib.sha256).hexdigest())"
-
-# Send request
-curl -X POST http://localhost:8000/webhook \
-  -H "Content-Type: application/json" \
-  -H "X-Signature: <computed-signature>" \
-  -d '{"message_id":"m1","from":"+919876543210","to":"+14155550100","ts":"2025-01-15T10:00:00Z","text":"Hello"}'
-```
+**Response:** `200 OK` | `401 Unauthorized` | `422 Validation Error`
 
 ### GET /messages
+List messages with pagination and filters.
 
-List stored messages with pagination and filters.
-
-**Query Parameters:**
-- `limit` (optional, int): Number of results (1-100, default: 50)
-- `offset` (optional, int): Pagination offset (default: 0)
-- `from` (optional, string): Filter by sender MSISDN (exact match)
-- `since` (optional, string): Filter by timestamp (ISO-8601 UTC, returns messages with ts >= since)
-- `q` (optional, string): Free-text search in message text (case-insensitive)
+**Query Params:** `limit` (1-100, def 50), `offset` (def 0), `from`, `since`, `q`
 
 **Response:**
 ```json
 {
-  "data": [
-    {
-      "message_id": "m1",
-      "from": "+919876543210",
-      "to": "+14155550100",
-      "ts": "2025-01-15T10:00:00Z",
-      "text": "Hello"
-    }
-  ],
+  "data": [{...}],
   "total": 10,
   "limit": 50,
   "offset": 0
 }
 ```
 
-**Example:**
+**Examples:**
 ```bash
-# List all messages
 curl http://localhost:8000/messages
-
-# Paginated
 curl "http://localhost:8000/messages?limit=10&offset=0"
-
-# Filter by sender
 curl "http://localhost:8000/messages?from=+919876543210"
-
-# Filter by timestamp
 curl "http://localhost:8000/messages?since=2025-01-15T09:00:00Z"
-
-# Text search
 curl "http://localhost:8000/messages?q=Hello"
 ```
 
 ### GET /stats
-
-Get message statistics and analytics.
+Message statistics and sender metrics.
 
 **Response:**
 ```json
 {
   "total_messages": 123,
   "senders_count": 10,
-  "messages_per_sender": [
-    {"from": "+919876543210", "count": 50},
-    {"from": "+911234567890", "count": 30}
-  ],
+  "messages_per_sender": [{"from": "+919876543210", "count": 50}],
   "first_message_ts": "2025-01-10T09:00:00Z",
   "last_message_ts": "2025-01-15T10:00:00Z"
 }
 ```
 
-**Example:**
-```bash
-curl http://localhost:8000/stats
-```
-
 ### GET /health/live
-
-Liveness probe - always returns 200 once the app is running.
+Liveness probe → always 200 when running.
 
 ### GET /health/ready
-
-Readiness probe - returns 200 only if:
-- Database is reachable and schema is applied
-- `WEBHOOK_SECRET` is set
+Readiness probe → 200 if DB is ready and WEBHOOK_SECRET is set, else 503.
 
 ### GET /metrics
-
-Prometheus-style metrics endpoint.
-
-**Metrics:**
-- `http_requests_total{path, status}`: Total HTTP requests by path and status
-- `webhook_requests_total{result}`: Webhook processing outcomes (created, duplicate, invalid_signature, validation_error)
-- `request_latency_ms`: Request latency histogram in milliseconds
-
-**Example:**
-```bash
-curl http://localhost:8000/metrics
-```
+Prometheus metrics endpoint (text format).
 
 ## Design Decisions
 
 ### HMAC Signature Verification
-
-The service uses HMAC-SHA256 for webhook signature verification:
-
-1. The raw request body is read as bytes
-2. HMAC-SHA256 is computed using `WEBHOOK_SECRET` as the key
-3. The computed signature is compared with the `X-Signature` header using constant-time comparison (`hmac.compare_digest`) to prevent timing attacks
-4. If the signature is invalid, the request is rejected with 401 and no database insertion occurs
-
-**Implementation:** See `app/routes/webhook.py::verify_signature()`
+- Computed: `hex(HMAC_SHA256(key=WEBHOOK_SECRET, message=raw_body))`
+- Verified using constant-time comparison to prevent timing attacks
+- Invalid signatures → HTTP 401, no database write
 
 ### Idempotency
+- `message_id` is PRIMARY KEY → duplicates caught at DB level
+- Both first and duplicate calls → HTTP 200 `{"status": "ok"}`
+- Logs indicate "created" vs "duplicate"
 
-Idempotency is enforced at the database level:
-
-1. The `messages` table has `message_id` as PRIMARY KEY
-2. When inserting a duplicate `message_id`, SQLite raises an `IntegrityError`
-3. This is caught and handled gracefully, returning the same 200 response
-4. The result field in logs indicates "created" vs "duplicate"
-
-**Implementation:** See `app/storage.py::insert_message()`
-
-### Pagination Contract
-
-The `/messages` endpoint uses offset-based pagination:
-
-- `limit`: Number of results per page (1-100, default 50)
-- `offset`: Number of records to skip (default 0)
-- `total`: Total number of records matching the filters (ignoring limit/offset)
-- Results are ordered deterministically: `ORDER BY ts ASC, message_id ASC`
-
-This ensures consistent ordering even when multiple messages have the same timestamp.
-
-**Implementation:** See `app/routes/messages.py` and `app/storage.py::get_messages()`
+### Pagination & Filtering
+- Offset-based: `limit` (1-100, default 50), `offset` (default 0)
+- Ordering: `ORDER BY ts ASC, message_id ASC` (deterministic)
+- Filters: `from` (exact), `since` (ISO-8601), `q` (substring)
+- `total` always reflects matching records (ignoring limit/offset)
 
 ### Statistics Endpoint
+- `total_messages`: COUNT(*)
+- `senders_count`: COUNT(DISTINCT from_msisdn)
+- `messages_per_sender`: Top 10 senders by count
+- `first_message_ts`, `last_message_ts`: MIN/MAX timestamps
 
-The `/stats` endpoint provides:
+### Prometheus Metrics
+```
+http_requests_total{path, status}    # All HTTP requests
+webhook_requests_total{result}       # created, duplicate, invalid_signature, validation_error
+request_latency_ms_bucket            # Histogram: 100ms, 500ms, 1000ms, 2000ms, 5000ms, +Inf
+```
 
-- **total_messages**: Simple COUNT(*) query
-- **senders_count**: COUNT(DISTINCT from_msisdn)
-- **messages_per_sender**: Top 10 senders by message count (GROUP BY with ORDER BY count DESC LIMIT 10)
-- **first_message_ts / last_message_ts**: MIN(ts) and MAX(ts) queries
-
-The implementation uses efficient SQL queries that perform well for thousands of rows.
-
-**Implementation:** See `app/storage.py::get_stats()`
-
-### Metrics
-
-Prometheus metrics are exposed via `/metrics`:
-
-- **http_requests_total**: Counter with `path` and `status` labels, incremented for all HTTP requests
-- **webhook_requests_total**: Counter with `result` label, incremented for webhook processing outcomes
-- **request_latency_ms**: Histogram with buckets [100, 500, 1000, 2000, 5000, +Inf] milliseconds
-
-Metrics are tracked via middleware and route handlers. The metrics endpoint uses the `prometheus-client` library to generate the standard Prometheus exposition format.
-
-**Implementation:** See `app/routes/metrics.py` and middleware integration in `app/main.py`
-
-### Structured Logging
-
-All logs are emitted as JSON, one line per log entry:
-
-**Required fields:**
-- `ts`: Server timestamp (ISO-8601 UTC)
-- `level`: Log level (INFO, ERROR, etc.)
-- `request_id`: Unique identifier per request (UUID)
-- `method`: HTTP method
-- `path`: Request path
-- `status`: HTTP status code
-- `latency_ms`: Request latency in milliseconds
-
-**Webhook-specific fields:**
-- `message_id`: Message ID from the request
-- `dup`: Boolean indicating if message was duplicate
-- `result`: Processing result ("created", "duplicate", "invalid_signature", "validation_error")
-
-Logs are formatted using a custom `JSONFormatter` and can be easily parsed with `jq` or ingested by log aggregation systems.
-
-**Implementation:** See `app/logging_utils.py`
+### Structured JSON Logging
+- One JSON object per line (compatible with `jq`)
+- Fields: `ts`, `level`, `request_id`, `method`, `path`, `status`, `latency_ms`
+- Webhook logs add: `message_id`, `dup`, `result`
 
 ## Environment Variables
 
-- `DATABASE_URL`: SQLite database path (default: `sqlite:////data/app.db`)
-- `LOG_LEVEL`: Logging level (default: `INFO`)
-- `WEBHOOK_SECRET`: Secret key for HMAC signature verification (required)
+| Variable | Required | Default |
+|----------|----------|---------|
+| `WEBHOOK_SECRET` | ✅ Yes | N/A |
+| `DATABASE_URL` | No | `sqlite:////data/app.db` |
+| `LOG_LEVEL` | No | `INFO` |
 
 ## Database Schema
 
 ```sql
-CREATE TABLE IF NOT EXISTS messages (
-    message_id TEXT PRIMARY KEY,
-    from_msisdn TEXT NOT NULL,
-    to_msisdn TEXT NOT NULL,
-    ts TEXT NOT NULL,
-    text TEXT,
-    created_at TEXT NOT NULL
+CREATE TABLE messages (
+  message_id TEXT PRIMARY KEY,
+  from_msisdn TEXT NOT NULL,
+  to_msisdn TEXT NOT NULL,
+  ts TEXT NOT NULL,
+  text TEXT,
+  created_at TEXT NOT NULL
 );
 ```
 
 ## Project Structure
 
 ```
-.
-├── app/
-│   ├── __init__.py
-│   ├── main.py                  # FastAPI app entry
-│   ├── config.py                # Environment variables
-│   ├── logging_utils.py         # JSON logging middleware
-│   ├── models.py                # DB schema / connection
-│   ├── storage.py               # DB queries
-│   └── routes/                  # Endpoint modules
-│       ├── __init__.py
-│       ├── webhook.py
-│       ├── messages.py
-│       ├── stats.py
-│       ├── health.py
-│       └── metrics.py
-├── tests/
-│   ├── test_webhook.py
-│   ├── test_messages.py
-│   └── test_stats.py
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-└── README.md
+app/
+  main.py, config.py, models.py, storage.py, logging_utils.py
+  routes/ - webhook.py, messages.py, stats.py, health.py, metrics.py
+
+tests/
+  test_webhook.py, test_messages.py, test_stats.py
+
+Dockerfile, docker-compose.yml, requirements.txt
 ```
 
 ## Testing
-
-Test files are provided in the `tests/` directory. Run tests with:
 
 ```bash
 python -m pytest tests/ -v
